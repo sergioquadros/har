@@ -1,0 +1,7 @@
+{
+    "installOptions" : {
+        "installDependencies" : true,
+        "installFromRepository" : true,
+        "libraryPath" : "/home/sergio/Documentos/dataScience/datascienceJH/ml_JH032016/work/har/packrat/lib/x86_64-pc-linux-gnu/3.2.4"
+    }
+}
