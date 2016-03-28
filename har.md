@@ -173,7 +173,7 @@ p6 <- ggplot(predDF2,aes(x=pred_rforest,y=testSub$classe))+
 grid.arrange(p3,p4,p5,p6, ncol = 2, nrow = 2)
 ```
 
-![](results_crossvalidation-1.png)<!-- -->
+![](https://github.com/sergioquadros/har/blob/master/har/har_files/figure-html/results_crossvalidation-1.png)<!-- -->
 
 **Figure 1** _Top_ Both with accuracies by cross-validated k=7 preprocess: _left_ k-Nearest Neighbors models; _rigth_ random forest. _Bottom_ Out-of-sample accuracies: _left_ k-Nearest Neighbors models; _rigth_ random forest. Random Forest model have better performance than k-Nearest Neighbors ones.  
 
