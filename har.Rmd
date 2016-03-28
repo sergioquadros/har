@@ -1,0 +1,146 @@
+---
+title: 'HAR: A Machine Learning Essay on Human Activity Recognition.'
+author: "Sergio H. S. de Quadros"
+date: '2016-03-21'
+output:
+  pdf_document: default
+  html_document:
+    fig_caption: yes
+    keep_md: yes
+---
+
+Remarks on reproducibility: R version 3.2.4 at _x86-64-pc-linux-gnu (64-bit)_ platform running under _Ubuntu 14.04.4 LTS_ and using the folowing libraries:  
+
+```{r setup, message=FALSE, echo=TRUE}
+library(knitr);library(rmarkdown);library(ggplot2);library(magrittr);library(caret);library(gridExtra); library(RCurl);library(corrplot);library(e1071);library(rpart);library(randomForest)
+```
+
+I achievied data set from  <http://groupware.les.inf.puc-rio.br/har> on _the Weight Lifting Exercise Dataset_ with:  
+
+```{r original_data , message=FALSE, echo=TRUE}
+# file names and url
+URLtrain <- "http://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+URLtest <- "http://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+NAMEtrain <- "pml_training.csv"
+NAMEtest <- "pml_testing.csv"
+# Create directory
+if (!file.exists("./figures")) {
+        dir.create("./figures")
+}
+# Download
+if (!file.exists(NAMEtrain)) {
+        download.file(URLtrain, destfile=NAMEtrain)
+}
+if (!file.exists(NAMEtest)) {
+        download.file(URLtest, destfile=NAMEtest)
+}
+# Load data and clean 'NA' & meaningless features
+training <- read.csv(NAMEtrain, na.strings = c("NA", ""))
+testing <- read.csv(NAMEtest, na.strings = c("NA", ""))
+training1 <- training[, colSums(is.na(training)) == 0]
+testing1 <- testing[, colSums(is.na(testing)) == 0]
+training0 <- training1[, -c(1:7)]
+testing0 <- testing1[, -c(1:7)]
+```
+
+The training data set has `r dim(training)[1]` examples with `r dim(training)[2]-1` features in a supervised multiclass problem, the outcome has seven outcome classes: `r unique(training0$classe)` corresponding to following activities:  sitting, standing, standing up, sitting down and walking. Our test set has  `r dim(testing)[1]` examples. 
+
+I selected `r dim(training0)[2]-1` features by exclusion of _NA_ and meaningless ones, then I looked for high covariances between features (PCA?), skeewness(Box Cox transformations?) and distribution in the classes of outcome, but I didn't made those transformations because they wouldn't add accuracy for a non-linear multiclass models. Some figures was uploaded at _figures_ file in GitHub site.
+
+```{r exloratory, message=FALSE, echo=FALSE}
+# # There were some clumps with high covariances between features
+# M <- cor(training0[, c(1:52)])
+# ord <- corrMatOrder(M, order="AOE")
+# M2 <- M[ord,ord]
+# corrplot(M2)
+# # # Skeewness
+# # # sapply(training0[, c(1:52)],skeewness)
+# # # The classe outcome has this distribution:
+# histogram(training$classe)
+# featurePlot(training0[, c(1:52)], training0$classe, "strip")
+```
+
+So I divided the training set into two subsets and used cross-validation in a 7-k fold: 
+
++    65% for prediction and cross-validation;   
+
++    35% to compute the out-of-sample errors.  
+
+```{r split_control, message=FALSE, echo=TRUE}
+fitControl <- trainControl(method = "cv", number=7)
+set.seed(141593)
+inTrain <- createDataPartition(training0$classe, p = 0.65)[[1]]
+trainSub <- training0[ inTrain,]
+testSub <- training0[-inTrain,]
+```
+
+I can approach a multiclass classification problem with logistic regression, SVM, random forest, decision trees, k-nearest neighbors and so on. My first choice was the fast _k-nearest neighbors_. Below we have out-of-sample optimistic assessment for k-nearest neighbors models' accuracies:
+
+```{r knn_model, message=FALSE, echo=TRUE}
+set.seed(141593)
+mod_knn <- train(classe ~.,method="knn",trControl=fitControl,data=trainSub)
+pred_knn <- predict(mod_knn,testSub)
+predDF <- data.frame(pred_knn,testSub$classe)
+uu <- confusionMatrix(pred_knn, testSub$classe)
+uu
+```
+
+I tried another methods: _rpart_ , _glm_ and _gbm_ that the accuracies was about 50%; then I used the _random forest method_ - more accurate, but slower. Below we have out-of-sample optimistic assessment for random forest models' accuracies:
+
+```{r randomForest_model, message=FALSE, echo=TRUE}
+set.seed(141593)
+mod_rforest <- train(classe ~.,method="rf", trControl=fitControl,data=trainSub)
+pred_rforest <- predict(mod_rforest,testSub)
+predDF2 <- data.frame(pred_rforest,testSub$classe)
+vv <- confusionMatrix(pred_rforest, testSub$classe)
+vv
+```
+
+This table summarizes _in_ and _out-of-sample_ errors by accuracies:  
+
+| Methods  | _In_ Accuracy (%) | _Out-sample_ Accuracy (%) |
+| ------------- | ------------- | ------------- |
+| k-nearest neighbors | `r round(100*mod_knn$resample$Accuracy[1],2)`  | `r round(100*uu$overall[1],2)` |
+| Random Forest | `r round(100*mod_rforest$resample$Accuracy[1],3)`  | `r round(100*vv$overall[1],3)` |
+
+This figure presents the results in another way:
+
+```{r results_crossvalidation, message=FALSE, echo=TRUE}
+titulo <- "Cross-validation Accuracy"
+trellis.par.set(caretTheme())
+p3 <- plot(mod_knn)
+trellis.par.set(caretTheme())
+p4 <- plot(mod_rforest)
+p5 <- ggplot(predDF,aes(x=pred_knn,y=testSub$classe))+geom_jitter(aes(colour=testSub$classe))+xlab("Class Predict")+ylab("Actual")+ggtitle("k-Nearest Neighbors")+ theme(legend.title=element_blank())
+p6 <- ggplot(predDF2,aes(x=pred_rforest,y=testSub$classe))+
+        geom_jitter(aes(colour=testSub$classe))+xlab("Class Predict")+ylab("Actual")+ggtitle("Random Forest")+theme(legend.title=element_blank())
+grid.arrange(p3,p4,p5,p6, ncol = 2, nrow = 2)
+```
+
+**Figure 1** _Top_ Both with accuracies by cross-validated k=7 preprocess: _left_ k-Nearest Neighbors models; _rigth_ random forest. _Bottom_ Out-of-sample accuracies: _left_ k-Nearest Neighbors models; _rigth_ random forest. Random Forest model have better performance than k-Nearest Neighbors ones.  
+
+We must choose the _Random Forest model_ because it had the best out-of-sample accuracy to made new predictions on testing set and submit the answers at end:
+
+```{r final_answers, message=FALSE, echo=TRUE}
+# predictions <- predict(mod_rforest, testing0)
+# predictAnswers <-  function(x) {
+#         n <- length(x)
+#         for(i in 1:n) {
+#                 filename <- paste0("problem_id_", i, ".txt")
+#                 write.table(x[i], file="answer_shsq.txt", 
+#                     quote=FALSE, row.names=FALSE, col.names=FALSE)
+#         }
+# }
+# predictAnswers(predictions)
+```
+
+
+# Bibliography  
+
++    Velloso, E.; Bulling, A.; Gellersen, H.; Ugulino, W.; Fuks, H. [Qualitative Activity Recognition of Weight Lifting Exercises.](http://groupware.les.inf.puc-rio.br/work.jsf?p1=11201) Proceedings of 4th International Conference in Cooperation with SIGCHI (Augmented Human '13) . Stuttgart, Germany: ACM SIGCHI, 2013.
+
++    Ugulino, W.; Cardador, D.; Vega, K.; Velloso, E.; Milidiu, R.; Fuks, H. [Wearable Computing: Accelerometers' Data Classification of Body Postures and Movements.](http://groupware.les.inf.puc-rio.br/work.jsf?p1=10335) Proceedings of 21st Brazilian Symposium on Artificial Intelligence. Advances in Artificial Intelligence - SBIA 2012. In: Lecture Notes in Computer Science. , pp. 52-61. Curitiba, PR: Springer Berlin / Heidelberg, 2012. ISBN 978-3-642-34458-9. DOI: 10.1007/978-3-642-34459-6_6. 
+
++    Velloso, E.; Bulling, A.; Gellersen, H.; Ugulino, W.; Fuks, H. [Qualitative Activity Recognition of Weight Lifting Exercises.](http://groupware.les.inf.puc-rio.br/work.jsf?p1=11201) Proceedings of 4th International Conference in Cooperation with SIGCHI (Augmented Human '13) . Stuttgart, Germany: ACM SIGCHI, 2013.
+
++    Ugulino, W.; Ferreira, M.; Velloso, E.; Fuks, H. [Virtual Caregiver: Colaboração de Parentes no Acompanhamento de Idosos.](http://groupware.les.inf.puc-rio.br/work.jsf?p1=10657) Anais do SBSC 2012, IX Simpósio Brasileiro de Sistemas Colaborativos , pp. 43-48. São Paulo, SP: IEEE, 2012. ISBN 978-0-7695-4890-6.
